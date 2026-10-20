@@ -1,16 +1,16 @@
 // Client for the tns-hrms backend (Spring Boot). Only used in the browser.
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 
+// The backend is an OAuth2 authorization server (client credentials grant): an application logs in with a client id and
+// secret and gets an access token that lives for `expires_in` seconds. There are no users and no refresh token: the
+// token is renewed by asking for a new one with the same secret, 5 minutes before it expires. The secret is kept in
+// memory only (never in storage), so after a page reload the token just runs out and the user logs in again.
 const TOKEN_KEY = "access_token";
-const ACCOUNT_KEY = "account";
+const SESSION_KEY = "session";
 
-export type Account = {
-  id: number;
-  email: string;
-  username: string;
-  avatar?: string;
-  phone?: string;
-  role?: string;
+export type Session = {
+  clientId: string;
+  expiresAt: number; // epoch milliseconds
 };
 
 export type Page<T> = {
@@ -63,24 +63,21 @@ export type PullResult = {
   error: string | null;
 };
 
-export const getToken = () => localStorage.getItem(TOKEN_KEY);
-
-export function getAccount(): Account | null {
+export function getSession(): Session | null {
   try {
-    return JSON.parse(localStorage.getItem(ACCOUNT_KEY) ?? "null");
+    const session: Session | null = JSON.parse(localStorage.getItem(SESSION_KEY) ?? "null");
+    return session && session.expiresAt > Date.now() ? session : null;
   } catch {
     return null;
   }
 }
 
-function saveLogin(data: { access_token: string; account: Account }) {
-  localStorage.setItem(TOKEN_KEY, data.access_token);
-  localStorage.setItem(ACCOUNT_KEY, JSON.stringify(data.account));
-}
+/** The access token, or null when there is none or it has expired. */
+export const getToken = () => (getSession() ? localStorage.getItem(TOKEN_KEY) : null);
 
 export function clearLogin() {
   localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(ACCOUNT_KEY);
+  localStorage.removeItem(SESSION_KEY);
 }
 
 export class ApiError extends Error {
@@ -90,10 +87,12 @@ export class ApiError extends Error {
 }
 
 async function send(path: string, init: RequestInit = {}) {
+  // the timers may have been throttled: renew here too when the token is about to expire
+  const session = getSession();
+  if (session && credentials && session.expiresAt - Date.now() < RENEW_BEFORE_MS) await renew();
   const token = getToken();
   return fetch(API_URL + path, {
     ...init,
-    credentials: "include", // the refresh token lives in an HttpOnly cookie
     headers: {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -104,37 +103,101 @@ async function send(path: string, init: RequestInit = {}) {
 
 async function unwrap<T>(res: Response): Promise<T> {
   const body = await res.json().catch(() => null);
+  if (res.status === 403) throw new ApiError(403, "Client này không có quyền thực hiện thao tác này");
   if (!res.ok) throw new ApiError(res.status, body?.message ?? `Lỗi ${res.status}`);
   return body?.data as T;
 }
 
-async function refresh() {
-  const res = await fetch(API_URL + "/api/v1/auth/refresh", { method: "POST", credentials: "include" });
-  if (!res.ok) return false;
-  saveLogin(await unwrap(res));
-  return true;
+function toLogin() {
+  clearLogin();
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- full reload on purpose: drops all state of the old session
+  window.location.href = "/login";
 }
 
-/** Calls the API; on 401 tries the refresh cookie once, then sends the user back to the login page. */
+/** Calls the API; on 401 (no token, expired, or the client was deactivated) sends the user back to the login page. */
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  let res = await send(path, init);
-  if (res.status === 401 && (await refresh())) res = await send(path, init);
-  if (res.status === 401) {
-    clearLogin();
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- full reload on purpose: drops all state of the old session
-    window.location.href = "/login";
-  }
+  const res = await send(path, init);
+  if (res.status === 401) toLogin();
   return unwrap<T>(res);
 }
 
-export async function login(email: string, password: string) {
-  const res = await send("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
-  if (res.status === 401) throw new ApiError(401, "Email hoặc mật khẩu không đúng");
-  saveLogin(await unwrap(res));
+// --- session: login, silent renewal, expiry -------------------------------------------------------------------------
+
+const RENEW_BEFORE_MS = 5 * 60 * 1000;
+const RETRY_MS = 30 * 1000;
+
+let credentials: { clientId: string; clientSecret: string } | null = null; // memory only, see the top of the file
+let timer: ReturnType<typeof setTimeout> | undefined;
+let renewing: Promise<boolean> | null = null;
+let listening = false;
+
+/** Gets a token through our own /api/token route (the backend's token endpoint has no CORS, see there) and keeps it. */
+async function requestToken(clientId: string, clientSecret: string) {
+  const res = await fetch("/api/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clientId, clientSecret }),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, body?.message ?? `Lỗi ${res.status}`);
+  const session: Session = { clientId: clientId.trim(), expiresAt: Date.now() + body.expires_in * 1000 };
+  localStorage.setItem(TOKEN_KEY, body.access_token);
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 }
 
-export async function logout() {
-  await send("/api/v1/auth/logout", { method: "POST" }).catch(() => {});
+/**
+ * Asks for a new token. Rejected credentials (the secret was renewed, the client was deactivated) end the session;
+ * any other failure keeps the old token and tries again shortly, until that token expires.
+ */
+async function renew() {
+  if (!credentials) return;
+  const { clientId, clientSecret } = credentials;
+  renewing ??= requestToken(clientId, clientSecret)
+    .then(() => true)
+    .catch((e) => {
+      if (e instanceof ApiError && e.status === 401) toLogin();
+      return false;
+    })
+    .finally(() => {
+      renewing = null;
+    });
+  if (await renewing) schedule();
+  else {
+    clearTimeout(timer);
+    timer = setTimeout(schedule, RETRY_MS);
+  }
+}
+
+/** Sleeps until it is time to renew (when this tab holds the secret) or until the token expires, then looks again. */
+function schedule() {
+  clearTimeout(timer);
+  const session = getSession();
+  if (!session) return toLogin();
+  const renewAt = credentials ? session.expiresAt - RENEW_BEFORE_MS : Infinity;
+  if (renewAt <= Date.now()) return void renew();
+  timer = setTimeout(schedule, Math.min(renewAt, session.expiresAt) - Date.now());
+}
+
+/** Starts the renewal / expiry timers for the logged-in session; call it whenever a page loads with a token. */
+export function watchSession() {
+  schedule();
+  if (listening) return;
+  listening = true;
+  // timers are throttled in background tabs and stop while the computer sleeps: look again when the tab comes back
+  document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && getToken() && schedule());
+}
+
+/** Logs in with an OAuth2 client. */
+export async function login(clientId: string, clientSecret: string) {
+  await requestToken(clientId, clientSecret);
+  credentials = { clientId: clientId.trim(), clientSecret };
+  watchSession();
+}
+
+/** There is nothing to revoke on the server (tokens just expire), so logging out only forgets the token and secret. */
+export function logout() {
+  credentials = null;
+  clearTimeout(timer);
   clearLogin();
 }
 

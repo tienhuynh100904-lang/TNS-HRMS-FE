@@ -15,7 +15,7 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
     try {
-      await login(String(form.get("email")), String(form.get("password")));
+      await login(String(form.get("clientId")), String(form.get("clientSecret")));
       router.replace("/attendance");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không kết nối được máy chủ");
@@ -47,24 +47,26 @@ export default function LoginPage() {
           <img src="/logo.svg" alt="Thép Tây Nam" className="h-14 w-auto lg:hidden" />
           <div>
             <h2 className="font-display text-3xl uppercase tracking-wide text-brand-dark">Đăng nhập</h2>
-            <p className="mt-1 text-sm text-gray-500">Dùng tài khoản được quản trị viên cấp.</p>
+            <p className="mt-1 text-sm text-gray-500">Dùng Client ID và Client Secret được quản trị viên cấp.</p>
           </div>
 
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">Email</span>
+            <span className="text-sm font-medium text-gray-700">Client ID</span>
             <input
-              name="email"
-              type="email"
+              name="clientId"
+              type="text"
               required
-              autoComplete="email"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
               className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2.5 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
           </label>
 
           <label className="block">
-            <span className="text-sm font-medium text-gray-700">Mật khẩu</span>
+            <span className="text-sm font-medium text-gray-700">Client Secret</span>
             <input
-              name="password"
+              name="clientSecret"
               type="password"
               required
               autoComplete="current-password"
