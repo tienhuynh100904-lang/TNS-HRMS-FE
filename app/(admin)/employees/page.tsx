@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { Employee, EmployeePunch, Page } from "@/lib/api";
 import { api, query } from "@/lib/api";
 import { ariaSort, Confirm, Drawer, Listbox, MonthPicker, SortButton, Switch } from "../controls";
-import { branchName, type Column, DataTable, input, Pager, time, useFetch } from "../shared";
+import { branchName, type Column, DataTable, Field, input, Pager, time, useFetch } from "../shared";
 
 const ACTIVE = [
   { value: "", label: "Tất cả" },
@@ -132,16 +132,6 @@ function PunchesDrawer({ employee, onClose }: { employee: Employee; onClose: () 
         <b className="text-brand-dark">{days.size}</b> ngày.
       </p>
     </Drawer>
-  );
-}
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
-      {label}
-      {children}
-      {hint && <span className="font-normal text-gray-500">{hint}</span>}
-    </label>
   );
 }
 

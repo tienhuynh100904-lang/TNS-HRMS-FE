@@ -9,6 +9,7 @@ const NAV = [
   { href: "/attendance", label: "Bảng công ngày" },
   { href: "/punches", label: "Lượt quẹt thẻ" },
   { href: "/employees", label: "Nhân viên" },
+  { href: "/access/clients", match: "/access", label: "Người dùng API" },
 ];
 
 const noSubscribe = () => () => {};
@@ -49,7 +50,7 @@ export default function AdminLayout({ children }: LayoutProps<"/">) {
                   key={n.href}
                   href={n.href}
                   className={`rounded-md px-3 py-2 text-sm font-medium transition ${
-                    pathname.startsWith(n.href)
+                    pathname.startsWith(n.match ?? n.href)
                       ? "bg-gold text-brand-dark"
                       : "text-white/85 hover:bg-white/10"
                   }`}

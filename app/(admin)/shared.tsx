@@ -122,6 +122,17 @@ export function usePaged<T>(
 export const input =
   "rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
 
+/** A labelled form field, with an optional hint under it. */
+export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">
+      {label}
+      {children}
+      {hint && <span className="font-normal text-gray-500">{hint}</span>}
+    </label>
+  );
+}
+
 export function FilterBar({
   filters,
   onChange,

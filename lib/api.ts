@@ -63,6 +63,36 @@ export type PullResult = {
   error: string | null;
 };
 
+type Audit = { createdAt: string | null; updatedAt: string | null; createdBy: string | null; updatedBy: string | null };
+
+/** An application allowed to call the API (OAuth2 client). The secret is only ever returned on create / renew. */
+export type ApiClient = Audit & {
+  id: number;
+  clientId: string;
+  name: string | null;
+  description: string | null;
+  active: boolean;
+  role: string | null; // role name
+};
+
+export type ApiClientWithSecret = ApiClient & { clientSecret: string };
+
+export type Permission = Audit & {
+  id: number;
+  name: string;
+  apiPath: string; // the endpoint's path pattern, e.g. /api/v1/clients/{id}
+  method: string;
+  module: string;
+  active: boolean;
+};
+
+export type Role = Audit & { id: number; name: string; description: string | null; active: boolean };
+
+export type RoleDetail = Role & { permissions: Permission[] };
+
+/** The role that may call every endpoint without any permission; it cannot be renamed, turned off or deleted. */
+export const ADMIN_ROLE = "ADMIN";
+
 export function getSession(): Session | null {
   try {
     const session: Session | null = JSON.parse(localStorage.getItem(SESSION_KEY) ?? "null");
@@ -192,6 +222,11 @@ export async function login(clientId: string, clientSecret: string) {
   await requestToken(clientId, clientSecret);
   credentials = { clientId: clientId.trim(), clientSecret };
   watchSession();
+}
+
+/** The secret of `clientId` was just renewed: when it is the client logged in here, keep renewing with the new one. */
+export function rememberSecret(clientId: string, clientSecret: string) {
+  if (credentials?.clientId === clientId) credentials = { clientId, clientSecret };
 }
 
 /** There is nothing to revoke on the server (tokens just expire), so logging out only forgets the token and secret. */
