@@ -11,11 +11,15 @@ export default function LoginPage() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
+    const formEl = e.currentTarget;
+    const form = new FormData(formEl);
     setLoading(true);
     setError("");
     try {
       await login(String(form.get("clientId")), String(form.get("clientSecret")));
+      // Next keeps this page alive after navigating away: leave it clean in case the user comes back
+      formEl.reset();
+      setLoading(false);
       router.replace("/attendance");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Không kết nối được máy chủ");

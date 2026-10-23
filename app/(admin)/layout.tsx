@@ -64,10 +64,7 @@ export default function AdminLayout({ children }: LayoutProps<"/">) {
                 {session.clientId}
               </span>
               <button
-                onClick={() => {
-                  logout();
-                  router.replace("/login");
-                }}
+                onClick={logout}
                 className="rounded-md border border-white/40 px-3 py-1.5 hover:bg-white/10"
               >
                 Đăng xuất

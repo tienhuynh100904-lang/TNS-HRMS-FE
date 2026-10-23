@@ -229,11 +229,15 @@ export function rememberSecret(clientId: string, clientSecret: string) {
   if (credentials?.clientId === clientId) credentials = { clientId, clientSecret };
 }
 
-/** There is nothing to revoke on the server (tokens just expire), so logging out only forgets the token and secret. */
+/**
+ * There is nothing to revoke on the server (tokens just expire), so logging out only forgets the token and secret.
+ * It reloads the login page: a client-side navigation would bring back the old login form (its fields and its
+ * "logging in" state), because Next keeps the pages it navigated away from.
+ */
 export function logout() {
   credentials = null;
   clearTimeout(timer);
-  clearLogin();
+  toLogin();
 }
 
 export function query(params: Record<string, string | number | undefined>) {
